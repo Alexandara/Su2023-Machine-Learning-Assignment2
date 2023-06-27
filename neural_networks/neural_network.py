@@ -20,7 +20,7 @@ class NeuralNetwork:
         """
         This method loads the data from a link into a pandas dataframe
         """
-        self.__data = pd.read_csv(location, skiprows=1, index_col=False,
+        self._data = pd.read_csv(location, skiprows=1, index_col=False,
                          names=["Number", "Date", "Temperature", "Humidity",
                                 "Light", "CO2", "HumidityRatio", "Occupancy"],
                          usecols=["Temperature", "Humidity", "Light", "CO2",
@@ -31,10 +31,10 @@ class NeuralNetwork:
         This method pre-processes a pandas dataframe in order to remove
         null lines and duplicates.
         """
-        self.__data.dropna(axis=0, how='any')
-        self.__data.drop_duplicates()
-        self.X = self.__data.iloc[:, :-1]
-        self.y = self.__data.iloc[:, -1]
+        self._data.dropna(axis=0, how='any')
+        self._data.drop_duplicates()
+        self.X = self._data.iloc[:, :-1]
+        self.y = self._data.iloc[:, -1]
 
     def train_test_split(self, test_percent=.2):
         """
@@ -57,12 +57,22 @@ class NeuralNetwork:
              [[random(),random(),random(),random(),random()], random()]]
         self.output = [[random(),random(),random(),random(),random()], random()]
 
-    def train(self):
+    def train(self, iterations=100, threshold=1):
         """
         Create and train a neural network
         """
-        for index, row in self.__data.iterrows():
-            self.forward_propagation(row)
+        loss = 0
+        loss_count = 0
+        for i in range(iterations):
+            for index, row in self._data.iterrows():
+                loss = loss + self.forward_propagation(row)
+                loss_count = loss_count + 1
+            loss = loss / loss_count
+            if loss < threshold:
+                break
+            else:
+                self.backpropagate(loss)
+        return loss
 
     def test(self):
         """
@@ -82,8 +92,14 @@ class NeuralNetwork:
             node_values.append(value)
         node_values = self.activate(node_values, self.activation)
         final_value = np.dot(node_values, self.output[0]) + self.output[1]
-        loss = ((data[-1:] - final_value) * (data[-1:] - final_value))/2
+        loss = ((data[-1:]["Occupancy"] - final_value) ** 2)/2
         return loss
+
+    def backpropagate(self, loss):
+        """
+        Update the weights of the neural network.
+        """
+
 
     def activate(self, values, activation):
         newvalues = []
@@ -97,3 +113,12 @@ class NeuralNetwork:
                     value = 0
             newvalues.append(value)
         return newvalues
+
+# For the record, it would be better to put this in a __main__.py
+# file, or better yet, just test it with pytest, but I do not feel
+# like doing that.
+if __name__ == '__main__':
+    neural_network = NeuralNetwork("https://personal.utdallas.edu/~art150530/occupancy.csv", activation="r")
+    neural_network.train_test_split()
+    neural_network.initialize()
+    neural_network.train()
