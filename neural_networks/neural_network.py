@@ -1,8 +1,10 @@
+"""
+Module creates a neural network for the Summer 2023 Machine Learning course at
+the University of Texas at Dallas
+"""
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import numpy as np
-from random import seed
-from random import random
 
 class NeuralNetwork:
     """
@@ -10,11 +12,25 @@ class NeuralNetwork:
     dataset: https://archive.ics.uci.edu/dataset/357/occupancy+detection
     Data hosted: https://personal.utdallas.edu/~art150530/occupancy.csv
     """
-    def __init__(self, location, activation="s"):
+    def __init__(self, location, activation="s", learningrate=0.1,
+                 iterations=100, threshold=1, test_split=.2):
+        self.activation = activation
+        self.learning_rate = learningrate
+        self.iterations = iterations
+        self.threshold = threshold
+        self.test_percent = test_split
         self.load_data(location)
         self.preprocess_data()
-        self.activation = activation
-        seed(1)
+        self.train_test_split()
+        self.layer1 = np.random.randn(5, 5)  # 5x5 matrix
+        self.outputlayer = np.random.randn(5, 1)
+        self.node_values = []
+        self.unactivated_hidden = []
+        self.unactivated_output = []
+        self.output = [0]
+        self.d_hidden = []
+        self.d_output = []
+        np.random.seed(1)
 
     def load_data(self, location):
         """
@@ -33,92 +49,149 @@ class NeuralNetwork:
         """
         self._data.dropna(axis=0, how='any')
         self._data.drop_duplicates()
-        self.X = self._data.iloc[:, :-1]
-        self.y = self._data.iloc[:, -1]
+        dataframe = self._data.iloc[:, :-1]
+        self.x_data = (dataframe - dataframe.min()) / \
+                      (dataframe.max() - dataframe.min())
+        self.y_data = self._data.iloc[:, -1]
 
-    def train_test_split(self, test_percent=.2):
+    def train_test_split(self):
         """
         This method splits the data into train and test data
         :param test_percent: the percentage of the data to test on
         """
-        self.X_train, self.X_test, self.y_train, self.y_test = \
-            train_test_split(self.X, self.y, test_size=test_percent,
+        self.x_train, self.x_test, self.y_train, self.y_test = \
+            train_test_split(self.x_data, self.y_data, test_size=self.test_percent,
                              random_state=5)
+        self.training = pd.concat([self.x_train, self.y_train], axis=1, join='inner')
+        self.testing = pd.concat([self.x_test, self.y_test], axis=1, join='inner')
 
-    def initialize(self):
+    def train(self):
         """
-        Creates a starting neural network
+        Train a neural network
         """
-        self.layer1 = \
-            [[[random(),random(),random(),random(),random()], random()],
-             [[random(),random(),random(),random(),random()], random()],
-             [[random(),random(),random(),random(),random()], random()],
-             [[random(),random(),random(),random(),random()], random()],
-             [[random(),random(),random(),random(),random()], random()]]
-        self.output = [[random(),random(),random(),random(),random()], random()]
-
-    def train(self, iterations=100, threshold=1):
-        """
-        Create and train a neural network
-        """
-        loss = 0
-        loss_count = 0
-        for i in range(iterations):
-            for index, row in self._data.iterrows():
-                loss = loss + self.forward_propagation(row)
-                loss_count = loss_count + 1
-            loss = loss / loss_count
-            if loss < threshold:
-                break
-            else:
-                self.backpropagate(loss)
-        return loss
+        for _ in range(self.iterations):
+            for _, row in self.training.iterrows():
+                prediction = self.forward_propagation(row)
+                self.backpropagate(row, prediction)
+                self.update()
 
     def test(self):
         """
         Test the neural network
         """
+        predictions = []
+        for _, row in self.testing.iterrows():
+            predictions.append(self.predict(row))
+        return self.loss(predictions, self.testing["Occupancy"].to_list())
 
     def forward_propagation(self, data):
         """
         Perform forward propogation on one row.
         :param data: one row of the data
-        :return: loss as a result of the final output
+        :return: the final prediction
         """
-        # Useful resource: https://towardsdatascience.com/neural-networks-backpropagation-by-dr-lihi-gur-arie-27be67d8fdce#:~:text=To%20update%20the%20weights%2C%20the,Learning%20rate%2C%20J%20%3D%20Cost.
-        node_values = []
-        for n in self.layer1:
-            value = np.dot(n[0], data[:-1]) + n[1]
-            node_values.append(value)
-        node_values = self.activate(node_values, self.activation)
-        final_value = np.dot(node_values, self.output[0]) + self.output[1]
-        loss = ((data[-1:]["Occupancy"] - final_value) ** 2)/2
-        return loss
+        # Useful resource: https://towardsdatascience.com/neural-networks
+        # -backpropagation-by-dr-lihi-gur-arie-27be67d8fdce#:~:text=To%20update
+        # %20the%20weights%2C%20the,Learning%20rate%2C%20J%20%3D%20Cost.
+        self.unactivated_hidden = np.dot(self.layer1.T, data[:-1].T)
+        self.node_values = self.activate(self.unactivated_hidden, self.activation)
+        self.unactivated_output = np.dot(self.outputlayer.T, self.node_values)
+        self.output = self.activate(self.unactivated_output, self.activation)
+        return self.output
 
-    def backpropagate(self, loss):
+    def backpropagate(self, data, prediction):
         """
         Update the weights of the neural network.
+        :param data: one row of the data
         """
+        # Useful Resource: https://medium.com/@qempsil0914/implement-neural-
+        # network-without-using-deep-learning-libraries-step-by-step-tutorial-
+        # python3-e2aa4e5766d1
+        x_data = data[:-1]
+        y_data = data[-1:]
+        num = x_data.shape[0]
+        deltaoutput = prediction - y_data["Occupancy"]
+        dunactivated_output = np.multiply(deltaoutput,
+                                          self.activate(self.unactivated_output,
+                                                        self.activation,
+                                                        derivative=True))
+        self.d_hidden = (1 / num) * np.sum(np.multiply(self.node_values,
+                                                     dunactivated_output))
 
+        deltahidden = deltaoutput * self.outputlayer * \
+                 self.activate(self.unactivated_hidden, self.activation, derivative=True)
+        self.d_output = (1 / num) * np.dot(x_data.T, deltahidden.T)
 
-    def activate(self, values, activation):
+    def activate(self, values, activation, derivative=False):
+        """
+        A function that runs an activation function on a set of values.
+        :param values: array of values to be activated.
+        :param activation:
+        :return:
+        """
         newvalues = []
-        for value in values:
-            if activation == "s":
-                value = 1 / (1 + np.exp(-1 *value))
-            elif activation == "t":
-                value = np.tanh(value)
-            elif activation == "r":
-                if value <= 0:
-                    value = 0
-            newvalues.append(value)
+        if activation == "s":
+            newvalues = 1 / (1 + np.exp(-values))
+            if derivative:
+                newvalues = newvalues * (1 - newvalues)
+        elif activation == "t":
+            newvalues = np.tanh(values)
+            if derivative:
+                newvalues = 1. - newvalues ** 2
+        elif activation == "r":
+            for value in values:
+                if not derivative:
+                    if value <= 0:
+                        newvalues.append(0)
+                    else:
+                        newvalues.append(value)
+                elif derivative:
+                    if value < 0:
+                        newvalues.append(0)
+                    else:
+                        newvalues.append(1)
+
         return newvalues
+
+    def loss(self, predictions, y_data):
+        """
+        Function that calculates the loss of a set of predictions per the truth
+        in the data.
+        :param predictions: a set of predicted values of y
+        :param y: the actual values of y
+        :return:
+        """
+        num = len(y_data)
+        loss = 0
+        for i in range(num):
+            loss = loss + ((predictions[i] - y_data[i]) ** 2)
+        return loss / num
+
+    def update(self):
+        """
+        Function that updates the weights of the neural network after
+        backpropagation.
+        """
+        self.layer1 = self.layer1 - self.learning_rate * self.d_hidden
+        self.outputlayer = self.outputlayer - self.learning_rate * self.d_output
+
+    def predict(self, data):
+        """
+        For a single instance row of data, runs the model to predict it.
+        :param data: a row of the data
+        :return: prediction, 1 or 0
+        """
+        prediction = self.forward_propagation(data)
+        if prediction[0] > .5:
+            return 1
+        return 0
 
 # For the record, it would be better to put this in a __main__.py
 # file, or better yet, just test it with pytest, but I do not feel
 # like doing that.
 if __name__ == '__main__':
-    neural_network = NeuralNetwork("https://personal.utdallas.edu/~art150530/occupancy.csv", activation="r")
-    neural_network.train_test_split()
-    neural_network.initialize()
+    neural_network = NeuralNetwork("https://personal.utdallas.edu/" +
+                                   "~art150530/occupancy.csv", activation="r",
+                                   iterations=10)
     neural_network.train()
+    print(neural_network.test())
