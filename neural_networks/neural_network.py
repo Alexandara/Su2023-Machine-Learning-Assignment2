@@ -13,12 +13,14 @@ class NeuralNetwork:
     Data hosted: https://personal.utdallas.edu/~art150530/occupancy.csv
     """
     def __init__(self, location, activation="s", learningrate=0.1,
-                 iterations=100, threshold=1, test_split=.2):
+                 iterations=100, threshold=1, test_split=.2,
+                 lambda_val=1):
         self.activation = activation
         self.learning_rate = learningrate
         self.iterations = iterations
         self.threshold = threshold
         self.test_percent = test_split
+        self.lambda_val = lambda_val
         self.load_data(location)
         self.preprocess_data()
         self.train_test_split()
@@ -72,7 +74,8 @@ class NeuralNetwork:
         for _ in range(self.iterations):
             for _, row in self.training.iterrows():
                 prediction = self.forward_propagation(row)
-                self.backpropagate(row, prediction)
+                value = prediction - row['Occupancy']
+                self.backpropagate(row, value)
                 self.update()
 
     def test(self):
@@ -81,7 +84,8 @@ class NeuralNetwork:
         """
         predictions = []
         for _, row in self.testing.iterrows():
-            predictions.append(self.predict(row))
+            pred = self.predict(row)
+            predictions.append(pred)
         return self.loss(predictions, self.testing["Occupancy"].to_list())
 
     def forward_propagation(self, data):
@@ -117,10 +121,9 @@ class NeuralNetwork:
                                                         derivative=True))
         self.d_hidden = (1 / num) * np.sum(np.multiply(self.node_values,
                                                      dunactivated_output))
-
         deltahidden = deltaoutput * self.outputlayer * \
                  self.activate(self.unactivated_hidden, self.activation, derivative=True)
-        self.d_output = (1 / num) * np.dot(x_data.T, deltahidden.T)
+        self.d_output = np.array((1 / num) * np.dot(x_data.T, deltahidden.T))
 
     def activate(self, values, activation, derivative=False):
         """
@@ -172,8 +175,11 @@ class NeuralNetwork:
         Function that updates the weights of the neural network after
         backpropagation.
         """
-        self.layer1 = self.layer1 - self.learning_rate * self.d_hidden
-        self.outputlayer = self.outputlayer - self.learning_rate * self.d_output
+        for i in range(4):
+            for j in range(4):
+                self.layer1[i][j] = self.layer1[i][j] - self.learning_rate * self.d_hidden
+        for i in range(len(self.d_output)):
+            self.outputlayer[i][0] = self.outputlayer[i][0] - self.learning_rate * self.d_output[i]
 
     def predict(self, data):
         """
@@ -186,12 +192,3 @@ class NeuralNetwork:
             return 1
         return 0
 
-# For the record, it would be better to put this in a __main__.py
-# file, or better yet, just test it with pytest, but I do not feel
-# like doing that.
-if __name__ == '__main__':
-    neural_network = NeuralNetwork("https://personal.utdallas.edu/" +
-                                   "~art150530/occupancy.csv", activation="r",
-                                   iterations=10)
-    neural_network.train()
-    print(neural_network.test())
