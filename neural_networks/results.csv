@@ -1,0 +1,3 @@
+Time,Activation,Learning Rate,Iterations,Training Mean Squared Error (MSE),Training Accuracy,Testing MSE,Testing Accuracy
+2023-07-05 19:17:23.710751,Sigmoid,0.1,100,0.326,67,0.332,67
+2023-07-05 19:23:55.097786,ReLu,0.1,100,0,0,0,0

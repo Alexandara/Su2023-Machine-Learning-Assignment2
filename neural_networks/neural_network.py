@@ -1,6 +1,8 @@
 """
 Module creates a neural network for the Summer 2023 Machine Learning course at
 the University of Texas at Dallas
+
+@author Alexis Tudor
 """
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -88,6 +90,16 @@ class NeuralNetwork:
             predictions.append(pred)
         return self.loss(predictions, self.testing["Occupancy"].to_list())
 
+    def test_on_training_data(self):
+        """
+        Test the neural network on the training data
+        """
+        predictions = []
+        for _, row in self.training.iterrows():
+            pred = self.predict(row)
+            predictions.append(pred)
+        return self.loss(predictions, self.training["Occupancy"].to_list())
+
     def forward_propagation(self, data):
         """
         Perform forward propogation on one row.
@@ -106,6 +118,7 @@ class NeuralNetwork:
     def backpropagate(self, data, prediction):
         """
         Update the weights of the neural network.
+        :optimizer: stochastic descent
         :param data: one row of the data
         """
         # Useful Resource: https://medium.com/@qempsil0914/implement-neural-
@@ -165,10 +178,15 @@ class NeuralNetwork:
         :return:
         """
         num = len(y_data)
-        loss = 0
+        sum_loss = 0
+        accuracy = 0
         for i in range(num):
-            loss = loss + ((predictions[i] - y_data[i]) ** 2)
-        return loss / num
+            sum_loss = sum_loss + ((predictions[i] - y_data[i]) ** 2)
+            if predictions[i] == y_data[i]:
+                accuracy = accuracy + 1
+        mse = sum_loss / num
+        accuracy = accuracy / num
+        return mse, accuracy
 
     def update(self):
         """
@@ -191,4 +209,3 @@ class NeuralNetwork:
         if prediction[0] > .5:
             return 1
         return 0
-
